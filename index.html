@@ -2274,7 +2274,7 @@ html.mob .sy-row{ min-height:60px; }
 
 <div id="toast" role="status"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
 <script>
 (function(){
   "use strict";
@@ -2370,6 +2370,9 @@ html.mob .sy-row{ min-height:60px; }
   el.hlsNote.textContent = (window.Hls && window.Hls.isSupported()) ? "hls.js ready" : "native HLS only";
   // can this browser decode HEVC/H.265? Chrome only knows once its GPU process has reported the hardware decoders,
   // so the answer is re-checked later and whenever a channel is opened, instead of being fixed at page load.
+  var hlsVer = (window.Hls && window.Hls.version) || "";
+  function hlsHasHevcTs() { var m = /^(\d+)\.(\d+)/.exec(hlsVer); return !!m && (+m[1] > 1 || +m[2] >= 6); }      // hls.js 1.6+ demuxes HEVC in MPEG-TS
+  if (hlsVer) el.hlsNote.textContent = "hls.js " + hlsVer + " ready";
   var hevcOk = false, hevcCaps = {}, mcCaps = {}, hlsNoteBase = el.hlsNote.textContent;
   var HEVC_TESTS = { "Main": "hvc1.1.6.L93.B0", "Main10": "hvc1.2.4.L93.B0", "4K Main": "hvc1.1.6.L153.B0", "4K Main10": "hvc1.2.4.L153.B0" };
   function hevcNote() { el.hlsNote.textContent = hlsNoteBase + (hevcOk ? " \u00b7 HEVC ok" : " \u00b7 HEVC not detected"); }
@@ -2403,7 +2406,7 @@ html.mob .sy-row{ min-height:60px; }
     probeHevc();
     return br + " (" + (navigator.platform || "?") + ") \u00b7 HEVC via MSE: " + Object.keys(HEVC_TESTS).map(function (k) { return k + (hevcCaps[k] ? " yes" : " no"); }).join(", ") +
       (Object.keys(mcCaps).length ? " \u00b7 decoder: " + Object.keys(mcCaps).map(function (k) { return k + " " + mcCaps[k]; }).join(", ") : "") +
-      " \u00b7 player: " + (curItem && curItem._ts ? "mpegts.js" : "hls.js") + (vidInfo.codec ? " \u00b7 stream: " + vidInfo.codec + (vidInfo.w ? " " + vidInfo.w + "x" + vidInfo.h : "") : "");
+      " \u00b7 player: " + (curItem && curItem._ts ? "mpegts.js" + ((window.mpegts && mpegts.version) ? " " + mpegts.version : "") : "hls.js " + hlsVer) + (vidInfo.codec ? " \u00b7 stream: " + vidInfo.codec + (vidInfo.w ? " " + vidInfo.w + "x" + vidInfo.h : "") : "");
   }
   window.__diag = diagText;      // type __diag() in the browser console
   var vidInfo = { expect: false, codec: "", w: 0, h: 0 };      // what the current stream is known to contain (filled by hls.js / mpegts.js)
@@ -5106,7 +5109,7 @@ html.mob .sy-row{ min-height:60px; }
         try {
           var pl = d && d.payload; if (!pl || !pl.byteLength) return;
           var ty = tsStreamTypes(pl instanceof ArrayBuffer ? new Uint8Array(pl) : new Uint8Array(pl.buffer, pl.byteOffset, pl.byteLength));
-          if (ty && ty.indexOf(0x24) >= 0) { vidInfo.expect = true; vidInfo.codec = "HEVC in MPEG-TS"; hevcInTs(); }
+          if (ty && ty.indexOf(0x24) >= 0) { vidInfo.expect = true; vidInfo.codec = "HEVC in MPEG-TS"; setHevcFix(true); if (!hlsHasHevcTs()) hevcInTs(); }
         } catch (x) {}
       });
       hls.on(window.Hls.Events.BUFFER_CODECS, function (e, d) { var t = d && (d.video || d.audiovideo); if (t) { vidInfo.expect = true; vidInfo.codec = t.levelCodec || t.codec || ""; if (isHevcCodec(vidInfo.codec)) setHevcFix(true); } });
@@ -5190,6 +5193,7 @@ html.mob .sy-row{ min-height:60px; }
     rc.vidT = setTimeout(function chk() {
       if (!isLiveNow() || cst.on || el.video.paused) return;
       var st = picStats();
+      try { if (el.npStatus.classList.contains("live")) el.npStatusText.textContent = "live \u00b7 " + (vidInfo.codec ? vidInfo.codec.split(".")[0] + " \u00b7 " : "") + (curItem && curItem._ts ? "mpegts" : "hls.js") + " \u00b7 " + st.size + (st.luma >= 0 && st.luma < 14 ? " \u00b7 black picture" : ""); } catch (e) {}
       var expect = vidInfo.expect || hevcBlocked(curItem) || !!(hls && hls.levels && hls.levels.some(function (l) { return l.videoCodec || l.width; })) ||
         (!!curItem && !curItem._ts && !audioOnly[curItem.name] && !/radio|\bfm\b|\bmusic\b|\baudio\b/i.test((curItem.name || "") + " " + (curItem.group || "")));      // radio / audio-only channels are left alone
       if (!expect) return;
@@ -6308,7 +6312,7 @@ html.mob .sy-row{ min-height:60px; }
   var tsPlayer = null;
   function loadMpegts(cb) {
     if (window.mpegts) return cb();
-    var sc = document.createElement("script"); sc.src = "https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.js"; sc.onload = function () { cb(); }; sc.onerror = function () { cb(new Error("load")); }; document.head.appendChild(sc);
+    var sc = document.createElement("script"); sc.src = "https://cdn.jsdelivr.net/npm/mpegts.js@1/dist/mpegts.js"; sc.onload = function () { cb(); }; sc.onerror = function () { cb(new Error("load")); }; document.head.appendChild(sc);
   }
   function startTs(c) {      // live channel as one continuous MPEG-TS stream (works when HLS does not)
     var url = c.url.replace(/\.m3u8(\?.*)?$/i, ".ts$1");
